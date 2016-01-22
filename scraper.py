@@ -9,7 +9,8 @@ import urllib2
 from datetime import datetime
 from bs4 import BeautifulSoup
 
-#### FUNCTIONS 1.0
+#### FUNCTIONS 1.2
+import requests       # import requests for validating urls
 
 def validateFilename(filename):
     filenameregex = '^[a-zA-Z0-9]+_[a-zA-Z0-9]+_[a-zA-Z0-9]+_[0-9][0-9][0-9][0-9]_[0-9QY][0-9]$'
@@ -37,19 +38,18 @@ def validateFilename(filename):
 
 def validateURL(url):
     try:
-        r = urllib2.urlopen(url)
+        r = requests.get(url, allow_redirects=True, timeout=20)
         count = 1
-        while r.getcode() == 500 and count < 4:
+        while r.status_code == 500 and count < 4:
             print ("Attempt {0} - Status code: {1}. Retrying.".format(count, r.status_code))
             count += 1
-            r = urllib2.urlopen(url)
+            r = requests.get(url, allow_redirects=True, timeout=20)
         sourceFilename = r.headers.get('Content-Disposition')
-
         if sourceFilename:
             ext = os.path.splitext(sourceFilename)[1].replace('"', '').replace(';', '').replace(' ', '')
         else:
             ext = os.path.splitext(url)[1]
-        validURL = r.getcode() == 200
+        validURL = r.status_code == 200
         validFiletype = ext.lower() in ['.csv', '.xls', '.xlsx', '.pdf']
         return validURL, validFiletype
     except:
@@ -66,7 +66,7 @@ def validate(filename, file_url):
         return False
     if not validURL:
         print filename, "*Error: Invalid URL*"
-        print file_url.encode('utf-8')
+        print file_url
         return False
     if not validFiletype:
         print filename, "*Error: Invalid filetype*"
@@ -84,7 +84,7 @@ def convert_mth_strings ( mth_string ):
 #### VARIABLES 1.0
 
 entity_id = "FTRDEX_CHUNHSFT_gov"
-url = "https://data.gov.uk/dataset/financial-transactions-data-colchester-hospital-university-nhs-foundation-trust"
+url = "http://www.colchesterhospital.nhs.uk/expenditure.shtml"
 errors = 0
 data = []
 
@@ -96,18 +96,24 @@ soup = BeautifulSoup(html, 'lxml')
 
 #### SCRAPE DATA
 
-blocks = soup.find_all('div', 'dropdown')
+blocks = soup.find_all('a')
 for block in blocks:
-    file_url = ''
-    try:
-        file_url = block.find('ul', 'dropdown-menu').find_all('li')[1].find('a')['href']
-    except:
-        pass
-    if '.csv' in file_url or '.xls' in file_url:
-        url = file_url
-        title = block.find_previous('div', 'dataset-resource-text').text.strip()
-        csvMth = title.split(' ')[1][:3]
-        csvYr = title[:4]
+    if '.csv' in block['href'] or '.xls' in block['href'] or '.xlsx' in block['href']:
+        url = block['href']
+        title = block.text.strip().split()
+        csvMth = title[-2][:3]
+        csvYr = title[-1]
+        csvMth = convert_mth_strings(csvMth.upper())
+        data.append([csvYr, csvMth, url])
+html = urllib2.urlopen('http://www.colchesterhospital.nhs.uk/expenditure_archive.shtml')
+soup = BeautifulSoup(html, 'lxml')
+blocks = soup.find_all('a')
+for block in blocks:
+    if '.csv' in block['href'] or '.xls' in block['href'] or '.xlsx' in block['href']:
+        url = block['href']
+        title = block.text.strip().split()
+        csvMth = title[-2][:3]
+        csvYr = title[-1]
         csvMth = convert_mth_strings(csvMth.upper())
         data.append([csvYr, csvMth, url])
 
